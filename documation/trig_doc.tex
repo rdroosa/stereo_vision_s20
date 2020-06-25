@@ -1,0 +1,43 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{amsmath}
+
+\title{Stereo Vision}
+\author{Richard Daelan Roosa}
+\date{Summer 2020}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+This document seeks to explore the effects of the physical parameters of the stereo camera system, and the physical limitations they impose on any depth-determination algorithm applied to the same.
+The most basic stereoscopic camera array (like the ones studied here) consist of a pair of cameras aligned horizontally with a well known horizontal dispacement.
+They are aimed such that the central axes of their fields of view are parallel.
+This creates a region where the two cameras' respective fields of view overlap; objects in this region appear images produced by both cameras.
+Such objects will appear displaced horizontally between the two images.
+For example, an object appearing in the center of the image from the camera on the left will appear somewhere to the left of the center of the imgae produced by the camera on the right.
+The extent of this "binocular disparity" will be dependent on the distance the object is from the camera array, and can therefore be used to calculate the distance from the camera array to different features common to both images.
+
+\section{Physical Parameters of a Stereoscopic Camera Array}
+There are a few important direct physical characteristics of the cameras themselves that impinge heavily on the practical application of such an array.
+They are labeled and will be hereafter referred to as follows:
+
+\begin{itemize}
+    \item Camera Resolution: $r_x$ and $r_y$ ($n_x$ and $n_y$ refer to the horizonatl and vertical aspects of a parameter respectively)
+    \item Camera Field of View: $\Phi_x$ and $\Phi_y$
+    \item Camera Horizontal Displacement: $l$
+\end{itemize}
+
+Camera images are generally presented in as two-dimensional rectangles (for example, on a sheet of 2D paper or a 2D phone/computer screen) and are generally thought of consisting of rectangular pixels.
+However, in reality, a camera image is two-dimensional representation of a spherical rectangle,\footnote{A spherical rectangle is a region of the surface of a sphere bounded by two pairs of planes, where each plane passes through the center of the sphere, and the lines of intersection formed by each pair are perpendicular.} of which each pixel is a section, itself a spherical rectangle.
+Therefore, the width of a pixel can be used as a unit of angular measurement, where each pixel represents an equal proportion of the total field of view.
+The angular width of a pixel in the horizontal dimension is given by its  
+
+\section{Depth Determination by Binocular Disparity}
+
+\section{Accounting for Barrel Distortion}
+
+\end{document}
