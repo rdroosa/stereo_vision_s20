@@ -106,13 +106,10 @@ Also, as described above, based on the pixels in which Object A appears in both 
 From there, we can determine trigonometrically that
 
 \begin{equation}
-    l = d(\tan\alpha_L + \tan\alpha_R)
-\end{equation}
+    \label{eq:inside}
+    l = d(\tan\alpha_R + \tan\alpha_L) $$
 
-and thus
-
-\begin{equation}
-    d = \frac{l}{\tan\alpha_L + \tan\alpha_R}
+   $$ d = \frac{l}{\tan\alpha_R + \tan\alpha_L}
 \end{equation}
 
 \begin{figure}
@@ -123,10 +120,10 @@ and thus
 
 
         \draw[thick, ->] 
-            (0, 0) node[anchor=north east] {$\vec{C_L}$} -- (0, 5) ;
+            (0, 0) -- (0, 5) ;
 
         \draw[thick, ->]
-            (3, 0) node[anchor=north west] {$\vec{C_R}$} -- (3, 5);
+            (3, 0) -- (3, 5);
 
         \draw[gray, thin, loosely dashed]
             (0,0) -- (-2,2)
@@ -135,11 +132,31 @@ and thus
             (3,0) -- (5,2); 
         
         \draw[dashed]
-            (-0.5,0) -- (4.5,0)
-            (-0.5,3) -- (4.5,3);
+            (-.5,0) -- (3.5,0);
+        
+        \draw[line width=0.01mm]
+            (3.6,0) -- (4.15,0)
+            (1.2,3) -- (4.15,3)
+            (0,-.1) -- (0,-.65)
+            (3,-.1) -- (3,-.65)
+            (1,3.2) -- (1,5.65)
+            (3,5.1) -- (3,5.65)
+            (0,5.1) -- (0.,5.65)
+            (2,5.5) node {$d\tan\alpha_R$}
+            (-1,5.5) node {$d\tan\alpha_L$};
+        
+        \draw[thin, <->]
+            (-.25,5.5) -- (0,5.5)
+            (0,5.5) -- (1,5.5);
+        
+        \draw[thin, <-]
+            (1,5.5) -- (1.25,5.5);
+        
+        \draw[thin, ->]
+            (2.75,5.5) -- (3,5.5);
 
         \fill
-            (1,3) circle[radius=2pt] node[anchor=south] {A};
+            (1,3) circle[radius=2pt] node[anchor=south west] {A};
 
         \draw[dash dot]
             (0,0) -- (1,3) -- (3,0);
@@ -150,24 +167,125 @@ and thus
         \draw[thin, <->]
             (3,2) node[anchor=west] {$\alpha_R$} arc (90:123.6:2);
         
-        \draw[thin, ->]
-            (4,3) -- (4,1.75) (4,1.5) node {$d$};
+        \draw[thin, <-]
+            (4,1.5) node {$d$} (4,3) -- (4,1.75);
         
         \draw[thin, ->]
             (4,1.25) -- (4,0);
 
         \draw[thin, <-]
-            (0,-.25) -- (1.25,-.25);
+            (0,-0.5) -- (1.25,-0.5);
         
         \draw[thin, ->]
-            (1.5,0) node[anchor=north] {$l$}
-            (1.75,-.25) -- (3,-.25);
+            (1.5,-0.5) node {$l$}
+            (1.75,-0.5) -- (3,-0.5);
 
 
     \end{tikzpicture}
+    \caption{An oject in stereoscopic view.}
 \end{figure}
 
+However, in that example, the object falls within the region between $\vec{C}_L$ and $\vec{C}_R$. 
+In figure \ref{fig:dd2}, consider the case where Object A falls outside and to the left of that region, but still within the region of overlapping fields of view.
+Now, we see that trigonometrically;
+
+\begin{equation}
+    \label{eq:outside_l}
+    l = d(\tan\alpha_R - \tan\alpha_L) $$
+
+    $$ d = \frac{l}{\tan\alpha_R - \tan\alpha_L}
+\end{equation}
+
+Now consider if Object A were placed on the opposide side of the figure.
+It would yield
+
+\begin{equation}
+    \label{eq:outside_r}
+    d = \frac{l}{- \tan\alpha_R + \tan\alpha_L}
+\end{equation}
+
+\begin{figure}
+    \label{fig:dd2}
+    \centering
+    \begin{tikzpicture}
+
+
+        \draw[thick, ->] 
+            (0, 0) -- (0, 5) ;
+
+        \draw[thick, ->]
+            (3, 0) -- (3, 5);
+
+        \draw[gray, thin, loosely dashed]
+            (0,0) -- (-2,2)
+            (0,0) -- (5, 5)
+            (3,0) -- (-2,5)
+            (3,0) -- (5,2); 
+        
+        \draw[dashed]
+            (-.5,0) -- (3.5,0);
+        
+        \draw[line width=0.01mm]
+            (-.6,0) -- (-1.3,0)
+            (-.7,4) -- (-1.3,4)
+            (0,-.1) -- (0,-.65)
+            (3,-.1) -- (3,-.65)
+            (-.5,4.2) -- (-.5,6.15)
+            (3,5.1) -- (3,6.15)
+            (0,5.1) -- (0.,5.65)
+            (1.25,6) node {$d\tan\alpha_R$}
+            (1.25,5.5) node {$d\tan\alpha_L$};
+        
+        \draw[thin, <->]
+            (0.5,5.5) -- (-0.5,5.5)
+            (-0.5,5.5) -- (0,5.5);
+        
+        \draw[thin, <-]
+            (-.5,6) -- (0.5,6);
+        
+        \draw[thin, ->]
+            (2,6) -- (3,6);
+
+        \fill
+            (-.5,4) circle[radius=2pt] node[anchor=south east] {A};
+
+        \draw[dash dot]
+            (0,0) -- (-.5, 4) -- (3,0);
+
+        \draw[thin, <->]
+            (0,2) arc (90:97.1:2) node[anchor=east] {$\alpha_L$} ;
+
+        \draw[thin, <->]
+            (3,2) node[anchor=west] {$\alpha_R$} arc (90:131.2:2);
+        
+        \draw[thin, <-]
+            (-1.15,2) node {$d$} (-1.15,4 ) -- (-1.15,2.25);
+        
+        \draw[thin, ->]
+            (-1.15,1.75) -- (-1.15,0);
+
+        \draw[thin, <-]
+            (0,-0.5) -- (1.25,-0.5);
+        
+        \draw[thin, ->]
+            (1.5,-0.5) node {$l$}
+            (1.75,-0.5) -- (3,-0.5);
+
+
+    \end{tikzpicture}
+    \caption{An object in stereoscopic view.}
+\end{figure}
+
+In all three of these equations, we have assumed that $\alpha_R$ and $\alpha_L$ are always positive.
+However, if we are judicious about how we apply signs to these angles, we can make one equation apply for any placement of Object A.
+We have three choices. 
+We can assert that 
+
+\begin{itemize}
+    \item each angle $\alpha$ is positive for pixels on the right half of the respective image, in which case equation \ref{eq:outside_r} always holds.
+    \item each angle $\alpha$ is positvie for pixels on the left half of the respective image, in which case equation \ref{eq:outside_l} always holds.
+    \item $\alpha_R$ is positive for pixels on the left side of the right image, and $\alpha_L$ is positive for pixels on the right side of the left image, in which case equation \ref{eq:inside} always holds. 
+\end{itemize}
 
 \section{Accounting for Barrel Distortion}
-
 \end{document}

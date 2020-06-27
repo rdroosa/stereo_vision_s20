@@ -1,8 +1,8 @@
 # Fdb version 3
-["pdflatex"] 1593133268 "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.tex" "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.pdf" "trig_doc" 1593133270
+["pdflatex"] 1593216602 "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.tex" "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.pdf" "trig_doc" 1593216603
   "/etc/texmf/web2c/texmf.cnf" 1574716319 475 c0e671620eb5563b2130f56340a5fde8 ""
-  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.aux" 1593133270 701 5f25fe6636f249824f8319adf7d10b3e ""
-  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.tex" 1593133268 6965 b7952042127a811f7fb1ffcf5c872052 ""
+  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.aux" 1593216603 1084 269e8097759d67238b4a71f80ab7eb67 ""
+  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.tex" 1593216602 10805 fbba7182be1333e5759aa0c0ac19d4a3 ""
   "/usr/share/texlive/texmf-dist/fonts/map/fontname/texfonts.map" 1511824771 3332 103109f5612ad95229751940c61aada0 ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1480098698 1004 54797486969f23fa377b128694d548df ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1480098698 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
@@ -130,11 +130,11 @@
   "/usr/share/texmf/web2c/texmf.cnf" 1551226139 34566 ab5be96bde1a5acfd4f881dbe566b5fb ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1580515206 3236060 fd056e42459c13cbcb0cc6e0a7cae8d4 ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1580515242 4229481 f75a372d77d553a9c1d00b6503fc09d0 ""
-  "trig_doc.aux" 1593133270 701 5f25fe6636f249824f8319adf7d10b3e ""
-  "trig_doc.tex" 1593133268 6965 b7952042127a811f7fb1ffcf5c872052 ""
+  "trig_doc.aux" 1593216603 1084 269e8097759d67238b4a71f80ab7eb67 ""
+  "trig_doc.tex" 1593216602 10805 fbba7182be1333e5759aa0c0ac19d4a3 ""
   (generated)
-  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.log"
-  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.pdf"
   "trig_doc.aux"
+  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.pdf"
   "trig_doc.log"
+  "/home/daelan/Documents/stereo_vision_s20/documation/trig_doc.log"
   "trig_doc.pdf"
