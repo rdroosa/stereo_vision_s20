@@ -287,5 +287,27 @@ We can assert that
     \item $\alpha_R$ is positive for pixels on the left side of the right image, and $\alpha_L$ is positive for pixels on the right side of the left image, in which case equation \ref{eq:inside} always holds. 
 \end{itemize}
 
+\section{Pixel Correlation}
+
+\begin{figure}
+    \centering
+    \begin{tikzpicture}
+
+        \foreach \a in {-30, -20, -10, 0, 10, 20, 30}
+            \draw[rotate around={\a:(0,0)}]
+                (0, 0) -- (0, 20);
+        ;
+
+        \foreach \a in {-30, -20, -10, 0, 10, 20, 30}
+            \draw[red, rotate around={\a:(1,0)}]
+                (1, 0) -- (1, 20);
+        ;
+    \end{tikzpicture}
+\end{figure}
+
+    \subsection{Cross-Correlation}
+
+\section{Depth Field Representation}
+
 \section{Accounting for Barrel Distortion}
 \end{document}
