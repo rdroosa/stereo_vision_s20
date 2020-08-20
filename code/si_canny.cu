@@ -9,39 +9,64 @@
 
 using namespace cv;
 
-__global__ void k_intensity (uchar *img_in, uchar *intensity)
+__global__ 
+void k_canny (uchar *img, uchar *canny)
 {
-   register unsigned int i_index =  (blockIdx.x * 2880) + 3 * threadIdx.x;
-   register unsigned int o_index = (960 * blockIdx.x) + threadIdx.x;
-
-   intensity[o_index] = (img_in[i_index] + img_in[i_index + 1] + img_in[i_index + 2]) / 3; 
-}
-
-__global__ void k_sobel (uchar *intensity, uchar *sobel)
-{
-	register int index = (960 * blockIdx.x) + threadIdx.x;
-	register int mod = index % 5927040;
-    
-
-	if ((index > 2939) && (index < 5924200) && (mod != 0) && (mod != 2939)) 
-	{
-    	register int h, v, mag;
-		v = intensity[index - 2941] + 2 * intensity[index - 2940] +  intensity[index - 2939] 
-		- intensity[index + 29410] - 2 * intensity[index + 2940] - intensity[index + 2939];
-
-		h = intensity[index - 2941] + 2 * intensity[index - 1] +  intensity[index + 2939]
-			- intensity[index + 2941] - 2 * intensity[index + 1] - intensity[index - 2939];
-		
-		mag = v * v + h * h;
+	// Calculate indices, alloc shared memory tiles
+	register int row = 28 * blockIdx.y + threadIdx.y - 1;
+	register int col = 30 * blockIdx.x + threadIdx.x - 1;
 	
-		sobel[index] = sqrt((float) mag);		
+	register int i_img = 8820 * row + 3 * col;
+	register int i_canny = 2940 * row + col;
+	
+	register int not_tile_edge = !((threadIdx.x == 0) || (threadIdx.y == 0) || (threadIdx.x == 31) || (threadIdx.y == 29)); 
+	register int not_img_edge = ((row > 0) && (row < 2016) && (col > 0) && (col < 2940));
+	register int v, h; 
+	
+	__shared__ uchar intensity	[32][30];
+	__shared__ uchar sobel		[32][30];
+	__shared__ uchar nms		[32][30];
+	
+	// Calculate intensity and load tile into shared memory
+	if (not_img_edge)
+	{
+		intensity[threadIdx.x][threadIdx.y] = (img[i_img] + img[i_img + 1] + img[i_img + 2]) / 3;
 	}
-}
+	__syncthreads();
 
-
-__global__ void k_hyst (uchar *sobel_h, uchar *hyster_thresh)
-{
-
+	// Compute sobel operator over shared memory tile
+	if (not_tile_edge)
+	{
+		v =   intensity		[threadIdx.x-1][threadIdx.y-1] 
+			+ 2*intensity	[threadIdx.x][threadIdx.y-1] 
+			+ intensity		[threadIdx.x+1][threadIdx.y-1]
+			- intensity		[threadIdx.x-1][threadIdx.y+1]  
+			- 2*intensity	[threadIdx.x][threadIdx.y+1] 
+			- intensity		[threadIdx.x+1][threadIdx.y+1];
+			
+		h =   intensity		[threadIdx.x+1][threadIdx.y-1]
+			+ 2*intensity	[threadIdx.x+1][threadIdx.y] 
+			+ intensity		[threadIdx.x+1][threadIdx.y+1]
+			- intensity		[threadIdx.x-1][threadIdx.y-1] 
+			- 2*intensity	[threadIdx.x-1][threadIdx.y] 
+			- intensity		[threadIdx.x-1][threadIdx.y+1];
+			
+		sobel[threadIdx.x][threadIdx.y] = (uchar) sqrt((float) (v*v + h*h));   	
+	} 
+	
+	__syncthreads();
+	
+	// Apply non-maximal suppression and threshold min/maxing over shared memory tile
+	
+	// __syncthreads();
+	
+	// Apply local hysteresis edge detection
+	
+	// Copy shared memory tile to global memory
+	if (not_img_edge & not_tile_edge)
+	{
+		canny[i_canny] = sobel[threadIdx.x][threadIdx.y];
+	}
 }
 
 int main(void)
@@ -52,40 +77,26 @@ int main(void)
 
     Mat img = imread("test_data/Backpack-perfect/im0.png", IMREAD_COLOR);
 
-    namedWindow("high", WINDOW_NORMAL);
-	namedWindow("low", WINDOW_NORMAL);
-	namedWindow("intensity", WINDOW_NORMAL);
 	namedWindow("canny", WINDOW_NORMAL);
 
     int n_pix = img.rows * img.cols;
     int n_subpix = n_pix * img.channels();
 
-    uchar *img_in, *intensity, *sobel;
+    uchar *img_in, *canny;
     
     cudaMallocManaged(&img_in, n_subpix * sizeof(img.data[0]));
-    cudaMallocManaged(&intensity, n_pix * sizeof(img.data[0]));
-	cudaMallocManaged(&sobel, n_pix * sizeof(img.data[0]));
+	cudaMallocManaged(&canny, n_pix * sizeof(img.data[0]));
 
     for (int i=0; i < n_subpix; i++)
     {
         img_in[i] = img.data[i];
     }
-
+    
+    dim3 block(32, 30, 1);
+    dim3 grid(98, 72, 1);
+    
 	cudaEventRecord(start);
-    k_intensity<<<6174, 960>>>(img_in, intensity);
-	
-    //cudaDeviceSynchronize();
-	
-/*
-    Mat imgintensity = Mat(img.rows, img.cols, CV_8UC1, intensity);
-    DEBUG_("READ INT")
-    imshow("intensity", imgintensity);
-    waitKey(0); 
-*/
-
-    k_sobel<<<6174, 960>>>(intensity, sobel);
-    cudaDeviceSynchronize(); 
-
+    k_canny<<<grid, block>>>(img_in, canny);
 	cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaDeviceSynchronize();
@@ -96,9 +107,9 @@ int main(void)
 
     DEBUG_("KERNEL TIME: " << ms) 
 	
-	Mat high = Mat(img.rows, img.cols, CV_8UC1, sobel);
-    DEBUG_("READ IMGS")
-    imshow("high", high);
+	Mat img_out = Mat(img.rows, img.cols, CV_8UC1, canny);
+    DEBUG_("READ IMG")
+    imshow("canny", img_out);
     waitKey(0);
 	
 	clock_t startt, stopt;
