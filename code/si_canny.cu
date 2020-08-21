@@ -12,89 +12,127 @@ using namespace cv;
 __global__ 
 void k_canny (uchar *img, uchar *canny)
 {
-	// Calculate indices, alloc shared memory tiles
-	register int row = 28 * blockIdx.y + threadIdx.y - 1;
-	register int col = 30 * blockIdx.x + threadIdx.x - 1;
+	// Calculate indices
+	register char is_img_edge = 
+			((blockIdx.x == 0) * 0b1000)
+		|	((blockIdx.x == (gridDim.x-1)) * 0b0100)
+		|	((blockIdx.y == 0) * 0b0010)
+		|	((blockIdx.y == (gridDim.y-1)) * 0b0001);
+							  
+	register int thread_id = blockDim.x * threadIdx.y + threadIdx.x;
 	
-	register int i_img = 8820 * row + 3 * col;
-	register int i_canny = 2940 * row + col;
+	register int load_y1 = thread_id / (blockDim.x + 2);
+	register int load_x1 = thread_id % (blockDim.x + 2);
 	
-	register int not_tile_edge = !((threadIdx.x == 0) || (threadIdx.y == 0) || (threadIdx.x == 31) || (threadIdx.y == 29)); 
-	register int not_img_edge = ((row > 0) && (row < 2016) && (col > 0) && (col < 2940));
-	register int v, h;
-	register char dir, diag, is_max;
-	register float dir_weight, diag_weight; 
+	register int load_y2 = (960 + thread_id) / (blockDim.x + 2);
+	register int load_x2 = (960 + thread_id) % (blockDim.x + 2);
 	
-	__shared__ uchar intensity	[32][30];
-	__shared__ uchar sobel		[32][30];
-	__shared__ uchar nms		[32][30];
+	register int i_img1 = 8820 * (32 * blockIdx.y + load_y1 - 1) + 3 * (30 * blockIdx.x + load_x1 - 1);
+	register int i_img2 = 8820 * (32 * blockIdx.y + load_y2 - 1) + 3 * (30 * blockIdx.x + load_x2 - 1);
+	register int i_canny = 2940 * (32 * blockIdx.y + threadIdx.y) + (30 * blockIdx.x + threadIdx.x);
+	register int i_tx = threadIdx.x + 1;
+	register int i_ty = threadIdx.y + 1;
+	
+	register char not_img_edge1 = 1;
+	register char not_img_edge2 = 1;
+	
+	if (is_img_edge)
+	{
+		not_img_edge1 = 
+				((((load_x1 == 0) * 0b1000)
+			|	((load_x1 == (blockDim.x-1)) * 0b0100)
+			|	((load_y1 == 0) * 0b0010)
+			|	((load_y1 == (blockDim.y-1)) * 0b0001))
+			&	is_img_edge) == 0;
+			
+		not_img_edge2 = 
+				((((load_x2 == 0) * 0b1000)
+			|	((load_x2 == (blockDim.x-1)) * 0b0100)
+			|	((load_y2 == 0) * 0b0010)
+			|	((load_y2 == (blockDim.y-1)) * 0b0001))
+			&	is_img_edge) == 0;
+	}
+	
+	// Declare utiliy variables
+	register int v, h;        					// Gradient vector components 
+	register char dir, diag, is_max;			// Non-maximal suppression boolean variables
+	register float dir_weight, diag_weight; 	// Non-maximal suppression interpolation weights
+
+	// Allocate shared memory tiles
+	__shared__ uchar intensity	[32][34];
+	__shared__ uchar sobel		[32][34];
+	__shared__ uchar nms		[32][34];
 	
 	// Calculate intensity and load tile into shared memory
-	if (not_img_edge)
+	if (not_img_edge1)
 	{
-		intensity[threadIdx.x][threadIdx.y] = (img[i_img] + img[i_img + 1] + img[i_img + 2]) / 3;
+		intensity[load_x1][load_y1] = (img[i_img1] + img[i_img1 + 1] + img[i_img1 + 2]) / 3;
 	}
+	else
+	{
+		intensity[load_x1][load_y1] = 0;
+	}
+		
+	if (((960 + thread_id) < 1088) && (not_img_edge2))
+	{
+		intensity[load_x2][load_y2] = (img[i_img2] + img[i_img2 + 1] + img[i_img2 + 2]) / 3;
+	}
+	else
+	{
+		intensity[load_x2][load_y2] = 0;
+	}
+			
 	__syncthreads();
 
 	// Compute sobel operator over shared memory tile
-	if (not_tile_edge)
-	{
-		v =   intensity		[threadIdx.x-1][threadIdx.y-1] 
-			+ 2*intensity	[threadIdx.x][threadIdx.y-1] 
-			+ intensity		[threadIdx.x+1][threadIdx.y-1]
-			- intensity		[threadIdx.x-1][threadIdx.y+1]  
-			- 2*intensity	[threadIdx.x][threadIdx.y+1] 
-			- intensity		[threadIdx.x+1][threadIdx.y+1];
-			
-		h =   intensity		[threadIdx.x+1][threadIdx.y-1]
-			+ 2*intensity	[threadIdx.x+1][threadIdx.y] 
-			+ intensity		[threadIdx.x+1][threadIdx.y+1]
-			- intensity		[threadIdx.x-1][threadIdx.y-1] 
-			- 2*intensity	[threadIdx.x-1][threadIdx.y] 
-			- intensity		[threadIdx.x-1][threadIdx.y+1];
-			
-		sobel[threadIdx.x][threadIdx.y] = (uchar) sqrt((float) (v*v + h*h));   	
-	} 
+	v =   intensity		[i_tx-1] [i_ty-1] 
+		+ 2*intensity	[i_tx]   [i_ty-1] 
+		+ intensity		[i_tx+1] [i_ty-1]
+		- intensity		[i_tx-1] [i_ty+1]  
+		- 2*intensity	[i_tx]   [i_ty+1] 
+		- intensity		[i_tx+1] [i_ty+1];
+		
+	h =   intensity		[i_tx+1] [i_ty-1]
+		+ 2*intensity	[i_tx+1] [i_ty] 
+		+ intensity		[i_tx+1] [i_ty+1]
+		- intensity		[i_tx-1] [i_ty-1] 
+		- 2*intensity	[i_tx-1] [i_ty] 
+		- intensity		[i_tx-1] [i_ty+1];
+		
+	sobel[i_ty][i_ty] = (uchar) sqrt((float) (v*v + h*h));   	
 	
 	__syncthreads();
 	
 	// Apply non-maximal suppression and threshold min/maxing over shared memory tile
+	dir = abs(h) > abs(v);
+	diag = (( h > 0 ) == (v > 0));	
 	
-	if (not_tile_edge)
-	{
-		dir = abs(h) > abs(v);
-		diag = (( h > 0 ) == (v > 0));	
-		
-		dir_weight = dir * ((float) v) / ((float) h);
-		diag_weight = 1 - dir_weight;
-		
-		is_max = 
-				(sobel[threadIdx.x][threadIdx.y] > 
-					(dir_weight * sobel[threadIdx.x + dir][threadIdx.y + !dir]
-					+ diag_weight * sobel[threadIdx.x + diag - !diag][threadIdx.y + 1]))
-			&
-				(sobel[threadIdx.x][threadIdx.y] >
-					(dir_weight * sobel[threadIdx.x - dir][threadIdx.y - !dir]
-					+ diag_weight * sobel[threadIdx.x - diag + !diag][threadIdx.y - 1]));	
-					
-		nms[threadIdx.x][threadIdx.y] = 
-			is_max * 
-			(
-					(128 * (sobel[threadIdx.x][threadIdx.y] > 200))
-				+ 	
-					(127 * (sobel[threadIdx.x][threadIdx.y] > 200))
-			);
-	}
+	dir_weight = dir * ((float) v) / ((float) h);
+	diag_weight = 1 - dir_weight;
+	
+	is_max = 
+			(sobel[i_tx][i_ty] > 
+				(dir_weight * sobel[i_tx + dir][i_ty + !dir]
+				+ diag_weight * sobel[i_tx + diag - !diag][i_ty + 1]))
+		&
+			(sobel[i_tx][i_ty] >
+				(dir_weight * sobel[i_tx - dir][i_ty - !dir]
+				+ diag_weight * sobel[i_tx - diag + !diag][i_ty - 1]));	
+				
+	nms[i_tx][i_ty] = 
+		is_max * 
+		(
+				(128 * (sobel[i_tx][i_ty] > 200))
+			+ 	
+				(127 * (sobel[i_tx][i_ty] > 200))
+		);
 	
 	__syncthreads();
 	
 	// Apply local hysteresis edge detection
 	
 	// Copy shared memory tile to global memory
-	if (not_img_edge & not_tile_edge)
-	{
-		canny[i_canny] = nms[threadIdx.x][threadIdx.y];
-	}
+	canny[i_canny] = intensity[i_tx][i_ty];
 }
 
 int main(void)
@@ -105,7 +143,7 @@ int main(void)
 
     Mat img = imread("test_data/Backpack-perfect/im0.png", IMREAD_COLOR);
 
-	namedWindow("canny", WINDOW_NORMAL);
+	namedWindow("canny", WINDOW_AUTOSIZE);
 
     int n_pix = img.rows * img.cols;
     int n_subpix = n_pix * img.channels();
@@ -120,25 +158,26 @@ int main(void)
         img_in[i] = img.data[i];
     }
     
-    dim3 block(32, 30, 1);
-    dim3 grid(98, 72, 1);
+    dim3 block(30, 32, 1);
+    dim3 grid(98, 63, 1);
     
-    for (int i = 0; i < 100; i++)
+    float ms;
+    float running = 0;
+	
+	int n_runs = 100;	
+	    
+    for (int i = 0; i < n_runs; i++)
     {
+    	cudaEventRecord(start);
     	k_canny<<<grid, block>>>(img_in, canny);
+		cudaEventRecord(stop);
+    	cudaEventSynchronize(stop);
+    	cudaDeviceSynchronize();
+    	cudaEventElapsedTime(&ms, start, stop);
+		running += ms; 
     }
     
-	cudaEventRecord(start);
-    k_canny<<<grid, block>>>(img_in, canny);
-	cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    cudaDeviceSynchronize();
-   
-    float ms;
-
-    cudaEventElapsedTime(&ms, start, stop);
-
-    DEBUG_("KERNEL TIME: " << ms) 
+    DEBUG_("AVERAGE: " << running / n_runs << std::endl << "LAST: " << ms)
 	
 	Mat img_out = Mat(img.rows, img.cols, CV_8UC1, canny);
     DEBUG_("READ IMG")
