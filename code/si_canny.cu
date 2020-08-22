@@ -13,7 +13,7 @@ using namespace cv;
 
 __device__ int rel_i (int index, int d_cols, int d_rows)
 {
-	return index + (d_rows * COLS) + d_cols;
+	return (index + (d_rows * COLS) + d_cols) % (COLS * ROWS);
 }
 
 __global__ void k_intensity (uchar *img_in, uchar *intensity)
@@ -23,6 +23,19 @@ __global__ void k_intensity (uchar *img_in, uchar *intensity)
 
    intensity[o_index] = (img_in[i_index] + img_in[i_index + 1] + img_in[i_index + 2]) / 3; 
 }
+
+__global__ void k_gaussian (uchar *in, uchar *out)
+{
+	register int index = (960 * blockIdx.x) + threadIdx.x;	
+	register int mod = index % 5927040;
+	if ((index > 2939) && (index < 5924200) && (mod != 0) && (mod != 2939))
+	{
+		out[index] = 
+			(in[rel_i(index, -1, -1)] + 2*in[rel_i(index, 0, -1)] + in[rel_i(index, 1, -1)]
+			+ 2*in[rel_i(index, -1, 0)] + 4*in[rel_i(index, 0, 0)] + 2*in[rel_i(index, 1, -1)]
+			+ in[rel_i(index, -1, 1)] + 2*in[rel_i(index, 0, 1)] + in[rel_i(index, 1, 1)]) / 16;
+	}
+} 
 
 __global__ void k_sobel (uchar *intensity, uchar *sobel, int high, int low)
 {
@@ -71,7 +84,7 @@ __global__ void k_sobel (uchar *intensity, uchar *sobel, int high, int low)
 __global__ void k_hyst_traverse (uchar *in, char *done)
 {
 	
-register int index = (960 * blockIdx.x) + threadIdx.x;
+	register int index = (960 * blockIdx.x) + threadIdx.x;
 	char is_done = 0;
 	if (in[index] == 255)
 	{
@@ -128,7 +141,7 @@ __global__ void k_hyst_prune(uchar *in)
 
 int main(void)
 {
-    cudaEvent_t start, stop;
+    cudaEvent_t start, intensity, gaussian, sobel, hyst, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
@@ -139,10 +152,11 @@ int main(void)
     int n_subpix = n_pix * img.channels();
 	char *done;
 
-    uchar *img_in, *intensity, *sobel;
+    uchar *img_in, *intensity, *sobel, *gaussian;
     
     cudaMallocManaged(&img_in, n_subpix * sizeof(img.data[0]));
     cudaMallocManaged(&intensity, n_pix * sizeof(img.data[0]));
+	cudaMallocManaged(&gaussian, n_pix * sizeof(img.data[0]));
 	cudaMallocManaged(&sobel, n_pix * sizeof(img.data[0]));
 	cudaMallocManaged(&done, sizeof(char)); 
 
@@ -152,8 +166,10 @@ int main(void)
     }
 
 	cudaDeviceSynchronize();
-	int n_runs = 100;
 	*done = 1;
+	cudaDeviceSynchronize();
+	int n_runs = 100;
+	char not_done = 1;
 	float ms; 
 	float running = 0;
 
@@ -161,14 +177,14 @@ int main(void)
 	for (int i = 0; i < n_runs; i++)
 	{
 		cudaEventRecord(start);
-		k_intensity<<<6174, 960>>>(img_in, intensity);
-		k_sobel<<<6174, 960>>>(intensity, sobel, 75, 25);
-		cudaDeviceSynchronize();
-		*done = 1;
-		while (*done)
+		k_intensity<<<6174, 960>>>(img_in, intensity);	
+		k_gaussian<<<6174, 960>>>(intensity, gaussian);
+		k_sobel<<<6174, 960>>>(gaussian, sobel, 40, 30);
+		while (not_done)
 		{
 			k_hyst_traverse<<<6174, 960>>>(sobel, done);
-			cudaDeviceSynchronize();	
+			cudaDeviceSynchronize();
+			not_done = *done;	
 		}
 		k_hyst_prune<<<6174, 960>>>(sobel);
 		cudaEventRecord(stop);
