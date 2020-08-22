@@ -26,6 +26,7 @@ void k_canny (uchar *img, uchar *canny)
 	register float dir_weight, diag_weight; 
 	
 	__shared__ uchar intensity	[32][30];
+	__shared__ uchar gaussian   [32][30];
 	__shared__ uchar sobel		[32][30];
 	__shared__ uchar nms		[32][30];
 	
@@ -59,7 +60,7 @@ void k_canny (uchar *img, uchar *canny)
 	__syncthreads();
 	
 	// Apply non-maximal suppression and threshold min/maxing over shared memory tile
-	
+	/*	
 	if (not_tile_edge)
 	{
 		dir = abs(h) > abs(v);
@@ -80,20 +81,20 @@ void k_canny (uchar *img, uchar *canny)
 		nms[threadIdx.x][threadIdx.y] = 
 			is_max * 
 			(
-					(128 * (sobel[threadIdx.x][threadIdx.y] > 200))
+					(128 * (sobel[threadIdx.x][threadIdx.y] > 75))
 				+ 	
-					(127 * (sobel[threadIdx.x][threadIdx.y] > 200))
+					(127 * (sobel[threadIdx.x][threadIdx.y] > 150))
 			);
 	}
 	
 	__syncthreads();
-	
+	*/
 	// Apply local hysteresis edge detection
 	
 	// Copy shared memory tile to global memory
 	if (not_img_edge & not_tile_edge)
 	{
-		canny[i_canny] = nms[threadIdx.x][threadIdx.y];
+		 canny[i_canny] = sobel[threadIdx.x][threadIdx.y];
 	}
 }
 
@@ -105,7 +106,7 @@ int main(void)
 
     Mat img = imread("test_data/Backpack-perfect/im0.png", IMREAD_COLOR);
 
-	namedWindow("canny", WINDOW_NORMAL);
+	namedWindow("canny", WINDOW_AUTOSIZE);
 
     int n_pix = img.rows * img.cols;
     int n_subpix = n_pix * img.channels();
@@ -122,23 +123,22 @@ int main(void)
     
     dim3 block(32, 30, 1);
     dim3 grid(98, 72, 1);
+	
+	float ms, running;
+	int n_runs = 100;
     
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < n_runs; i++)
     {
+    	cudaEventRecord(start);
     	k_canny<<<grid, block>>>(img_in, canny);
+		cudaEventRecord(stop);
+    	cudaEventSynchronize(stop);
+    	cudaDeviceSynchronize();
+    	cudaEventElapsedTime(&ms, start, stop);
+		running += ms; 
     }
     
-	cudaEventRecord(start);
-    k_canny<<<grid, block>>>(img_in, canny);
-	cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    cudaDeviceSynchronize();
-   
-    float ms;
-
-    cudaEventElapsedTime(&ms, start, stop);
-
-    DEBUG_("KERNEL TIME: " << ms) 
+    DEBUG_("AVERAGE: " << running / n_runs << std::endl << "LAST: " << ms)
 	
 	Mat img_out = Mat(img.rows, img.cols, CV_8UC1, canny);
     DEBUG_("READ IMG")
