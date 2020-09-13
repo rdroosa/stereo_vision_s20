@@ -21,7 +21,7 @@ __global__ void k_intensity (uchar *img_in, uchar *intensity)
    register unsigned int i_index =  (blockIdx.x * 2880) + 3 * threadIdx.x;
    register unsigned int o_index = (960 * blockIdx.x) + threadIdx.x;
 
-   intensity[o_index] = (img_in[i_index] + img_in[i_index + 1] + img_in[i_index + 2]) / 3; 
+   intensity[o_index] = (img_in[i_index]*0.114 + img_in[i_index + 1]*0.587 + img_in[i_index + 2]*0.2989); 
 }
 
 __global__ void k_gaussian (uchar *in, uchar *out)
@@ -85,50 +85,22 @@ __global__ void k_hyst_traverse (uchar *in, char *done)
 {
 	
 	register int index = (960 * blockIdx.x) + threadIdx.x;
-	char is_done = 0;
-	if (in[index] == 255)
+	if (in[index] == 128)
 	{
-		if (in[rel_i(index, -1, -1)] == 128) 
+		in[index] += 127 * (
+			(in[rel_i(index, -1, -1)] == 255) ||
+			(in[rel_i(index, -1,  0)] == 255) ||
+			(in[rel_i(index, -1,  1)] == 255) ||
+			(in[rel_i(index,  0, -1)] == 255) ||
+			(in[rel_i(index,  0,  1)] == 255) ||
+			(in[rel_i(index,  1, -1)] == 255) ||
+			(in[rel_i(index,  1,  0)] == 255) ||
+			(in[rel_i(index,  1,  1)] == 255)
+		);
+		if (in[index] == 255)
 		{
-			in[rel_i(index, -1, -1)] = 255;
-			is_done = 1;
+			*done = 0;
 		}
-		if (in[rel_i(index, 0, -1)] == 128) 
-		{
-			in[rel_i(index, 0, -1)] = 255;
-			is_done = 1;
-		}
-		if (in[rel_i(index, 1, -1)] == 128) 
-		{
-			in[rel_i(index, 1, -1)] = 255;
-			is_done = 1;
-		}
-		if (in[rel_i(index, -1, 0)] == 128) 
-		{
-			in[rel_i(index, -1, 0)] = 255;
-			is_done = 1;
-		}
-		if (in[rel_i(index, 1, 0)] == 128) 
-		{
-			in[rel_i(index, 1, 0)] = 255;
-			is_done = 1;
-		}
-		if (in[rel_i(index, -1, 1)] == 128) 
-		{
-			in[rel_i(index, -1, 1)] = 255;
-			is_done = 1;
-		}
-		if (in[rel_i(index, 0, 1)] == 128) 
-		{
-			in[rel_i(index, 0, 1)] = 255;
-			is_done = 1;
-		}
-		if (in[rel_i(index, 1, 1)] == 128) 
-		{
-			in[rel_i(index, 1, 1)] = 255;
-			is_done = 1;
-		}
-	*done = is_done;
 	}
 	
 }
@@ -141,9 +113,9 @@ __global__ void k_hyst_prune(uchar *in)
 
 int main(void)
 {
-    cudaEvent_t start, intensity, gaussian, sobel, hyst, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    cudaEvent_t start_t, intensity_t, gaussian_t, sobel_t, hyst_t, stop_t;
+    cudaEventCreate(&start_t);
+    cudaEventCreate(&stop_t);
 
     Mat img = imread("test_data/Backpack-perfect/im0.png", IMREAD_COLOR);
 	namedWindow("canny", WINDOW_NORMAL);
@@ -166,35 +138,38 @@ int main(void)
     }
 
 	cudaDeviceSynchronize();
-	*done = 1;
+	*done = 0;
 	cudaDeviceSynchronize();
-	int n_runs = 100;
-	char not_done = 1;
-	float ms; 
+	int n_runs = 10;
+	float ms;
+	int traverse_steps = 0; 
 	float running = 0;
 
 
 	for (int i = 0; i < n_runs; i++)
 	{
-		cudaEventRecord(start);
+		cudaEventRecord(start_t);
 		k_intensity<<<6174, 960>>>(img_in, intensity);	
 		k_gaussian<<<6174, 960>>>(intensity, gaussian);
-		k_sobel<<<6174, 960>>>(gaussian, sobel, 40, 30);
-		while (not_done)
-		{
+		k_sobel<<<6174, 960>>>(gaussian, sobel, 70, 60);
+		cudaDeviceSynchronize();
+		cudaEventRecord(stop_t);
+		cudaEventSynchronize(stop_t);
+		while (!*done)
+		{	
+			traverse_steps += 1;
+			*done = 1;
 			k_hyst_traverse<<<6174, 960>>>(sobel, done);
 			cudaDeviceSynchronize();
-			not_done = *done;	
 		}
 		k_hyst_prune<<<6174, 960>>>(sobel);
-		cudaEventRecord(stop);
-		cudaEventSynchronize(stop);
+		
 		cudaDeviceSynchronize(); 
-		cudaEventElapsedTime(&ms, start, stop);
+		cudaEventElapsedTime(&ms, start_t, stop_t);
 
 		running += ms;
 	}
-   
+	DEBUG_("TRAVERSE: " << traverse_steps)
     DEBUG_("AVERAGE: " << running / n_runs << std::endl << "LAST: " << ms) 
 
 	img = Mat(img.rows, img.cols, CV_8UC1, sobel);
