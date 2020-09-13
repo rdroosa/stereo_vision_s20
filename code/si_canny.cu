@@ -3,6 +3,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <iostream>
+#include <queue>
 
 #define DEBUG_(x) (std::cout << "DEBUG: " << x << std::endl);
 #define MOD (2016 * 2940 * 3)
@@ -11,7 +12,7 @@
 
 using namespace cv;
 
-__device__ int rel_i (int index, int d_cols, int d_rows)
+__host__ __device__ int rel_i (int index, int d_cols, int d_rows)
 {
 	return (index + (d_rows * COLS) + d_cols) % (COLS * ROWS);
 }
@@ -111,6 +112,49 @@ __global__ void k_hyst_prune(uchar *in)
 	in[index] = in[index] * (in[index] == 255);
 }
 
+__host__ void c_hyst(uchar *img, int n_pix)
+{
+	std::queue<int> hyst_queue;
+	int test_index;
+	for (int i = 0; i < n_pix; i++)
+	{
+		if (img[i] == 255)
+		{
+			for (int dx = -1; dx < 2; dx++)
+			{
+				for(int dy = -1; dy < 2; dy++)
+				{
+					test_index = rel_i(i, dx, dy);
+					if (img[test_index] == 128)
+					{ 
+						img[test_index] = 255;
+						hyst_queue.push(test_index);
+					}
+				}
+			}
+		}
+	}
+	
+	while(!hyst_queue.empty())
+	{
+		int i = hyst_queue.front();
+		for (int dx = -1; dx < 2; dx++)
+		{
+			for(int dy = -1; dy < 2; dy++)
+			{
+				test_index = rel_i(i, dx, dy);
+				if (img[test_index] == 128)
+				{ 
+					img[test_index] = 255;
+					hyst_queue.push(test_index);
+				}
+			}
+		}
+		hyst_queue.pop();
+	}
+}
+
+
 int main(void)
 {
     cudaEvent_t start_t, intensity_t, gaussian_t, sobel_t, hyst_t, stop_t;
@@ -123,6 +167,8 @@ int main(void)
     int n_pix = img.rows * img.cols;
     int n_subpix = n_pix * img.channels();
 	char *done;
+	int *weak_indices;
+	int n_weak;
 
     uchar *img_in, *intensity, *sobel, *gaussian;
     
@@ -130,6 +176,7 @@ int main(void)
     cudaMallocManaged(&intensity, n_pix * sizeof(img.data[0]));
 	cudaMallocManaged(&gaussian, n_pix * sizeof(img.data[0]));
 	cudaMallocManaged(&sobel, n_pix * sizeof(img.data[0]));
+	cudaMallocManaged(&weak_indices, n_pix * sizeof(int));
 	cudaMallocManaged(&done, sizeof(char)); 
 
     for (int i=0; i < n_subpix; i++)
@@ -140,7 +187,7 @@ int main(void)
 	cudaDeviceSynchronize();
 	*done = 0;
 	cudaDeviceSynchronize();
-	int n_runs = 10;
+	int n_runs = 100;
 	float ms;
 	int traverse_steps = 0; 
 	float running = 0;
@@ -151,19 +198,11 @@ int main(void)
 		cudaEventRecord(start_t);
 		k_intensity<<<6174, 960>>>(img_in, intensity);	
 		k_gaussian<<<6174, 960>>>(intensity, gaussian);
-		k_sobel<<<6174, 960>>>(gaussian, sobel, 70, 60);
+		k_sobel<<<6174, 960>>>(gaussian, sobel, 200, 50);
 		cudaDeviceSynchronize();
+		c_hyst(sobel, n_pix);
 		cudaEventRecord(stop_t);
 		cudaEventSynchronize(stop_t);
-		while (!*done)
-		{	
-			traverse_steps += 1;
-			*done = 1;
-			k_hyst_traverse<<<6174, 960>>>(sobel, done);
-			cudaDeviceSynchronize();
-		}
-		k_hyst_prune<<<6174, 960>>>(sobel);
-		
 		cudaDeviceSynchronize(); 
 		cudaEventElapsedTime(&ms, start_t, stop_t);
 
