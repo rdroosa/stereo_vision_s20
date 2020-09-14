@@ -11,6 +11,7 @@
 #define COLS 2940
 
 using namespace cv;
+__constant__ int index_offset[] = {1, -1, COLS-1, COLS, COLS+1, 1-COLS, -COLS, -1-COLS};
 
 __host__ __device__ int rel_i (int index, int d_cols, int d_rows)
 {
@@ -82,75 +83,64 @@ __global__ void k_sobel (uchar *intensity, uchar *sobel, int high, int low)
 	}
 }
 
-__global__ void k_hyst_traverse (uchar *in, char *done)
+__global__ void k_hyst(uchar *img, int *indices_in, int *indices_out, int n_indices)
 {
 	
-	register int index = (960 * blockIdx.x) + threadIdx.x;
-	if (in[index] == 128)
+	int index = (indices_in[((32 * blockIdx.x) + threadIdx.x) % n_indices] + index_offset[blockIdx.y]) % (ROWS * COLS);
+	if (img[index] == 128)
 	{
-		in[index] += 127 * (
-			(in[rel_i(index, -1, -1)] == 255) ||
-			(in[rel_i(index, -1,  0)] == 255) ||
-			(in[rel_i(index, -1,  1)] == 255) ||
-			(in[rel_i(index,  0, -1)] == 255) ||
-			(in[rel_i(index,  0,  1)] == 255) ||
-			(in[rel_i(index,  1, -1)] == 255) ||
-			(in[rel_i(index,  1,  0)] == 255) ||
-			(in[rel_i(index,  1,  1)] == 255)
-		);
-		if (in[index] == 255)
-		{
-			*done = 0;
-		}
+		img[index] = 255;
+		indices_out[blockIdx.y + 8*(32*blockIdx.x + threadIdx.x)] = index;
+	} else
+	{
+		indices_out[blockIdx.y + 8*(32*blockIdx.x + threadIdx.x)] = -1;
 	}
 	
-}
-
-__global__ void k_hyst_prune(uchar *in)
-{
-	register int index = (960 * blockIdx.x) + threadIdx.x;
-	in[index] = in[index] * (in[index] == 255);
 }
 
 __host__ void c_hyst(uchar *img, int n_pix)
 {
-	std::queue<int> hyst_queue;
-	int test_index;
+	int *test_indices, *new_indices;
+	cudaMallocManaged(&test_indices, ROWS*COLS*sizeof(int));
+	cudaMallocManaged(&new_indices, ROWS*COLS*sizeof(int));
+
+	int n_test_indices = 0;
+	int n_new_indices;
+
+	dim3 grid(0, 8);
+
 	for (int i = 0; i < n_pix; i++)
 	{
 		if (img[i] == 255)
 		{
-			for (int dx = -1; dx < 2; dx++)
-			{
-				for(int dy = -1; dy < 2; dy++)
-				{
-					test_index = rel_i(i, dx, dy);
-					if (img[test_index] == 128)
-					{ 
-						img[test_index] = 255;
-						hyst_queue.push(test_index);
-					}
-				}
-			}
+			test_indices[n_test_indices] = i;
+			n_test_indices++;
 		}
 	}
-	
-	while(!hyst_queue.empty())
-	{
-		int i = hyst_queue.front();
-		for (int dx = -1; dx < 2; dx++)
+	int n_runs = 1;
+	while(true)
+	{	
+		//DEBUG_("RUN " << n_runs << std::endl << "TEST INDICES: " << n_test_indices << std::endl)
+		n_runs++;
+		if (n_test_indices == 0)
 		{
-			for(int dy = -1; dy < 2; dy++)
+			break;
+		}
+				
+		grid.x = (n_test_indices / 32) + 1;
+		cudaDeviceSynchronize();
+		k_hyst<<<grid, 32>>>(img, test_indices, new_indices, n_test_indices);
+		cudaDeviceSynchronize();
+		n_new_indices = 0;
+		for (int i = 0; i < 8*n_test_indices; i++)
+		{
+			if (new_indices[i] > -1)
 			{
-				test_index = rel_i(i, dx, dy);
-				if (img[test_index] == 128)
-				{ 
-					img[test_index] = 255;
-					hyst_queue.push(test_index);
-				}
+				test_indices[n_new_indices] = new_indices[i];
+				n_new_indices++;
 			}
 		}
-		hyst_queue.pop();
+		n_test_indices = n_new_indices;
 	}
 }
 
@@ -187,7 +177,7 @@ int main(void)
 	cudaDeviceSynchronize();
 	*done = 0;
 	cudaDeviceSynchronize();
-	int n_runs = 100;
+	int n_runs = 1;
 	float ms;
 	int traverse_steps = 0; 
 	float running = 0;
