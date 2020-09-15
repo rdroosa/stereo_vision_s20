@@ -152,7 +152,7 @@ int main(void)
     cudaEventCreate(&stop_t);
 
     Mat img = imread("test_data/Backpack-perfect/im0.png", IMREAD_COLOR);
-	namedWindow("canny", WINDOW_NORMAL);
+	//namedWindow("canny", WINDOW_NORMAL);
 
     int n_pix = img.rows * img.cols;
     int n_subpix = n_pix * img.channels();
@@ -201,9 +201,9 @@ int main(void)
 	DEBUG_("TRAVERSE: " << traverse_steps)
     DEBUG_("AVERAGE: " << running / n_runs << std::endl << "LAST: " << ms) 
 
-	img = Mat(img.rows, img.cols, CV_8UC1, sobel);
+	Mat img_out = Mat(img.rows, img.cols, CV_8UC1, sobel);
     DEBUG_("READ IMGS")
-    imshow("canny", img);
+    imwrite("out.png", img);
     waitKey(0);
 
     return 0;
