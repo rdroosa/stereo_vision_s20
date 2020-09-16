@@ -11,9 +11,9 @@
 
 using namespace cv;
 
-__host__ __device__ int rel_i (int index, int d_cols, int d_rows)
+__host__ __device__ int rel_i (int index, int d_cols, int d_rows, int cols, int rows)
 {
-	return (index + (d_rows * COLS) + d_cols) % (COLS * ROWS);
+	return (index + (d_rows * cols) + d_cols) % (cols * rows);
 }
 
 __global__ void k_intensity (uchar *img_in, uchar *intensity)
@@ -24,7 +24,7 @@ __global__ void k_intensity (uchar *img_in, uchar *intensity)
    intensity[o_index] = (img_in[i_index]*0.114 + img_in[i_index + 1]*0.587 + img_in[i_index + 2]*0.2989); 
 }
 
-__global__ void k_gaussian (uchar *in, uchar *out)
+/*__global__ void k_gaussian (uchar *in, uchar *out)
 {
 	register int index = (1024 * blockIdx.x) + threadIdx.x;	
 	register int mod = index % 640;
@@ -35,23 +35,38 @@ __global__ void k_gaussian (uchar *in, uchar *out)
 			+ 2*in[rel_i(index, -1, 0)] + 4*in[rel_i(index, 0, 0)] + 2*in[rel_i(index, 1, -1)]
 			+ in[rel_i(index, -1, 1)] + 2*in[rel_i(index, 0, 1)] + in[rel_i(index, 1, 1)]) / 16;
 	}
-} 
+} */
 
-__global__ void k_sobel (uchar *intensity, uchar *sobel, int high, int low)
-{
-	register int index = (1024 * blockIdx.x) + threadIdx.x;
-	register int mod = index % 640;
+__global__ void k_vector_sobel (uchar *intensity, uchar *sobel, int high, int low)
+{	
+	register int i_index = (3 * 1024 * blockIdx.x) + (3*threadIdx.x);
+	register int o_index = (1024 * blockIdx.x) + threadIdx.x;
+	register int mod = o_index % 640;
 
-	if ((index > 639) && (index < 306560) && (mod != 0) && (mod != 639)) 
+	if ((o_index > 639) && (o_index < 306560) && (mod != 0) && (mod != 639)) 
 	{
     	register int h, v, mag;
 		register char dir, diag, is_max;
 		float dir_weight, diag_weight;
-		v = intensity[rel_i(index, -1, 1)] + 2 * intensity[rel_i(index, 0, 1)] +  intensity[rel_i(index, 1, 1)] 
-			- intensity[rel_i(index, -1, -1)] - 2 * intensity[rel_i(index, 0, -1)] - intensity[rel_i(index, 1, -1)];
+		int v_temp, h_temp;
+		v = 0;
+		h = 0;
+		register float weights[] = {0.114, 0.587, 0.2989};
 
-		h = intensity[rel_i(index, 1, -1)] + 2 * intensity[rel_i(index, 1, 0)] +  intensity[rel_i(index, 1, 1)]
-			- intensity[rel_i(index, -1, -1)] - 2 * intensity[rel_i(index, -1, 0)] - intensity[rel_i(index, -1, 1)];
+		for (int i = 0; i < 3; i++)
+		{
+			v_temp = intensity[rel_i(i+i_index, -1, 1, 1920, 480)] + 2 * intensity[rel_i(i+i_index, 0, 1, 1920, 480)] +  intensity[rel_i(i+i_index, 1, 1, 1920, 480)] 
+				- intensity[rel_i(i+i_index, -1, -1, 1920, 480)] - 2 * intensity[rel_i(i+i_index, 0, -1, 1920, 480)] - intensity[rel_i(i+i_index, 1, -1, 1920, 480)];
+
+			h_temp = intensity[rel_i(i+i_index, 1, -1, 1920, 480)] + 2 * intensity[rel_i(i+i_index, 1, 0, 1920, 480)] +  intensity[rel_i(i+i_index, 1, 1, 1920, 480)]
+				- intensity[rel_i(i+i_index, -1, -1, 1920, 480)] - 2 * intensity[rel_i(i+i_index, -1, 0, 1920, 480)] - intensity[rel_i(i+i_index, -1, 1, 1920, 480)];
+			
+			v += weights[i]*weights[i] * (v_temp * v_temp);
+			h += weights[i]*weights[i] * (h_temp * h_temp);
+		}
+		
+		v = sqrt((float) v);
+		h = sqrt((float) h);
 
 		mag = v * v + h * h;
 
@@ -62,22 +77,23 @@ __global__ void k_sobel (uchar *intensity, uchar *sobel, int high, int low)
 		diag_weight = 1 - dir_weight;
 
 		mag = sqrt((float) mag);
-		sobel[index] = mag;
-
+		sobel[o_index] = mag;
+		
 		__syncthreads();
 
 		is_max = 
 				(mag > 
-					(dir_weight * sobel[rel_i(index, dir, !dir)]
-					+ diag_weight * sobel[rel_i(index, diag - !diag,  1)]))
+					(dir_weight * sobel[rel_i(o_index, dir, !dir, 640, 480)]
+					+ diag_weight * sobel[rel_i(o_index, diag - !diag,  1, 640, 480)]))
 			&&
 				(mag >
-					(dir_weight * sobel[rel_i(index, -dir, -(!dir))]
-					+ diag_weight * sobel[rel_i(index, !diag - diag, -1)]));
+					(dir_weight * sobel[rel_i(o_index, -dir, -(!dir), 640, 480)]
+					+ diag_weight * sobel[rel_i(o_index, !diag - diag, -1, 640, 480)]));
 
 		__syncthreads();
 		
-		sobel[index] = is_max * 128 * (mag > low) + 127 * (mag > high);	
+		//sobel[o_index] = is_max * (128 * (mag > low) + 127 * (mag > high));
+			
 	}
 }
 
@@ -88,14 +104,14 @@ __global__ void k_hyst_traverse (uchar *in, char *done)
 	if (in[index] == 128)
 	{
 		in[index] += 127 * (
-			(in[rel_i(index, -1, -1)] == 255) ||
-			(in[rel_i(index, -1,  0)] == 255) ||
-			(in[rel_i(index, -1,  1)] == 255) ||
-			(in[rel_i(index,  0, -1)] == 255) ||
-			(in[rel_i(index,  0,  1)] == 255) ||
-			(in[rel_i(index,  1, -1)] == 255) ||
-			(in[rel_i(index,  1,  0)] == 255) ||
-			(in[rel_i(index,  1,  1)] == 255)
+			(in[rel_i(index, -1, -1, 640, 480)] == 255) ||
+			(in[rel_i(index, -1,  0, 640, 480)] == 255) ||
+			(in[rel_i(index, -1,  1, 640, 480)] == 255) ||
+			(in[rel_i(index,  0, -1, 640, 480)] == 255) ||
+			(in[rel_i(index,  0,  1, 640, 480)] == 255) ||
+			(in[rel_i(index,  1, -1, 640, 480)] == 255) ||
+			(in[rel_i(index,  1,  0, 640, 480)] == 255) ||
+			(in[rel_i(index,  1,  1, 640, 480)] == 255)
 		);
 		if (in[index] == 255)
 		{
@@ -123,7 +139,7 @@ __host__ void c_hyst(uchar *img, int n_pix)
 			{
 				for(int dy = -1; dy < 2; dy++)
 				{
-					test_index = rel_i(i, dx, dy);
+					test_index = rel_i(i, dx, dy, 640, 480);
 					if (img[test_index] == 128)
 					{ 
 						img[test_index] = 255;
@@ -141,7 +157,7 @@ __host__ void c_hyst(uchar *img, int n_pix)
 		{
 			for(int dy = -1; dy < 2; dy++)
 			{
-				test_index = rel_i(i, dx, dy);
+				test_index = rel_i(i, dx, dy, 640, 480);
 				if (img[test_index] == 128)
 				{ 
 					img[test_index] = 255;
@@ -177,9 +193,9 @@ int main(void)
     uchar *img_in, *intensity, *sobel, *gaussian1, *gaussian2;
     
     cudaMallocManaged(&img_in, n_subpix * sizeof(img.data[0]));
-    cudaMallocManaged(&intensity, n_pix * sizeof(img.data[0]));
-	cudaMallocManaged(&gaussian1, n_pix * sizeof(img.data[0]));
-	cudaMallocManaged(&gaussian2, n_pix * sizeof(img.data[0]));
+    //cudaMallocManaged(&intensity, n_pix * sizeof(img.data[0]));
+	//cudaMallocManaged(&gaussian1, n_pix * sizeof(img.data[0]));
+	//cudaMallocManaged(&gaussian2, n_pix * sizeof(img.data[0]));
 	cudaMallocManaged(&sobel, n_pix * sizeof(img.data[0]));
 	cudaMallocManaged(&weak_indices, n_pix * sizeof(int));
 	cudaMallocManaged(&done, sizeof(char)); 
@@ -190,27 +206,27 @@ int main(void)
     }
 
 	cudaDeviceSynchronize();
-	*done = 0;
-	cudaDeviceSynchronize();
-	int n_runs = 100;
+	int n_runs = 1;
 	float ms;
 	int traverse_steps = 0; 
 	float running = 0;
 
-
+	DEBUG_("BEGIN")
 	for (int i = 0; i < n_runs; i++)
 	{
 		cudaEventRecord(start_t);
-		k_intensity<<<300, 1024>>>(img_in, intensity);	
-		k_gaussian<<<300, 1024>>>(intensity, gaussian1);
-		k_gaussian<<<300, 1024>>>(gaussian1, gaussian2);
-		k_sobel<<<300, 1024>>>(gaussian2, sobel, 100, 40);
+		//k_intensity<<<300, 1024>>>(img_in, intensity);	
+		//k_gaussian<<<300, 1024>>>(intensity, gaussian1);
+		//k_gaussian<<<300, 1024>>>(gaussian1, gaussian2);
+		cudaDeviceSynchronize();
+		k_vector_sobel<<<300, 1024>>>(img_in, sobel, 240, 200);
 		
 		cudaDeviceSynchronize();
-		c_hyst(sobel, n_pix);
+		//DEBUG_("TRAVERSE...")
+		//c_hyst(sobel, n_pix);
+		//DEBUG_("DONE")
 		cudaEventRecord(stop_t);
 		cudaEventSynchronize(stop_t);
-		cudaDeviceSynchronize(); 
 		cudaEventElapsedTime(&ms, start_t, stop_t);
 
 		running += ms;
